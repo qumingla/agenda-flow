@@ -14,6 +14,10 @@ enum BetaAppError: LocalizedError {
     case missingStartDate
     case invalidLocation
     case fileWriteFailed
+    case invalidLLMConfiguration(String)
+    case keychainFailed(String)
+    case llmRequestFailed(String)
+    case invalidLLMResponse(String)
 
     var errorDescription: String? {
         switch self {
@@ -23,7 +27,45 @@ enum BetaAppError: LocalizedError {
         case .missingStartDate: "提交前必须确认明确时间。"
         case .invalidLocation: "线下地点需要填写地点名称，或将地点类型改为待定/不适用。"
         case .fileWriteFailed: "文件保存失败。"
+        case .invalidLLMConfiguration(let message): "LLM 配置不可用：\(message)"
+        case .keychainFailed(let message): "密钥保存失败：\(message)"
+        case .llmRequestFailed(let message): "LLM 请求失败：\(message)"
+        case .invalidLLMResponse(let message): "LLM 返回格式不可用：\(message)"
         }
+    }
+}
+
+struct LLMExtractionResult: Sendable {
+    var drafts: [CandidateDraft]
+    var promptVersion: String
+    var schemaVersion: String
+    var modelProvider: String
+    var modelName: String
+    var rawResponse: String
+    var parsedResponse: String
+    var tokenUsage: String
+    var costEstimate: Double
+
+    init(
+        drafts: [CandidateDraft],
+        promptVersion: String,
+        schemaVersion: String = "1.0",
+        modelProvider: String,
+        modelName: String,
+        rawResponse: String,
+        parsedResponse: String,
+        tokenUsage: String = "{}",
+        costEstimate: Double = 0
+    ) {
+        self.drafts = drafts
+        self.promptVersion = promptVersion
+        self.schemaVersion = schemaVersion
+        self.modelProvider = modelProvider
+        self.modelName = modelName
+        self.rawResponse = rawResponse
+        self.parsedResponse = parsedResponse
+        self.tokenUsage = tokenUsage
+        self.costEstimate = costEstimate
     }
 }
 
@@ -34,7 +76,7 @@ protocol OCRService {
 
 @MainActor
 protocol LLMService {
-    func extractCandidates(from text: String, referenceDate: Date) async throws -> [CandidateDraft]
+    func extractCandidates(from text: String, referenceDate: Date) async throws -> LLMExtractionResult
 }
 
 protocol CalendarSyncService {
@@ -160,7 +202,7 @@ extension CGImagePropertyOrientation {
 
 @MainActor
 struct MockLLMService: LLMService {
-    func extractCandidates(from text: String, referenceDate: Date) async throws -> [CandidateDraft] {
+    func extractCandidates(from text: String, referenceDate: Date) async throws -> LLMExtractionResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw BetaAppError.emptyInput
@@ -171,10 +213,21 @@ struct MockLLMService: LLMService {
             makeDraft(from: chunk, referenceDate: referenceDate)
         }
 
+        let finalDrafts: [CandidateDraft]
         if drafts.isEmpty, looksLikeSchedule(trimmed) {
-            return [fallbackDraft(from: trimmed, referenceDate: referenceDate)]
+            finalDrafts = [fallbackDraft(from: trimmed, referenceDate: referenceDate)]
+        } else {
+            finalDrafts = drafts
         }
-        return drafts
+
+        return LLMExtractionResult(
+            drafts: finalDrafts,
+            promptVersion: "mock-extraction-v1",
+            modelProvider: "local",
+            modelName: "MockLLMService",
+            rawResponse: "Generated \(finalDrafts.count) candidate(s)",
+            parsedResponse: finalDrafts.map(\.title).joined(separator: ", ")
+        )
     }
 
     private func splitPotentialEvents(_ text: String) -> [String] {
@@ -520,7 +573,7 @@ struct MockLLMService: LLMService {
 @MainActor
 struct BetaExtractionPipeline {
     var ocrService: OCRService = AppleVisionOCRService()
-    var llmService: LLMService = MockLLMService()
+    var llmService: (any LLMService)?
 
     func processText(rawInput: RawInputModel, context: ModelContext) async {
         await extract(from: rawInput.originalText ?? rawInput.rawText ?? "", rawInput: rawInput, context: context)
@@ -569,7 +622,9 @@ struct BetaExtractionPipeline {
             rawInput.status = .extracting
             try context.save()
             let started = Date()
-            let drafts = try await llmService.extractCandidates(from: text, referenceDate: rawInput.createdAt)
+            let service = try llmService ?? LLMServiceFactory.makeService()
+            let result = try await service.extractCandidates(from: text, referenceDate: rawInput.createdAt)
+            let drafts = result.drafts
 
             for draft in drafts {
                 let candidate = CandidateEventModel(
@@ -618,13 +673,15 @@ struct BetaExtractionPipeline {
                 rawInputID: rawInput.id,
                 taskType: "extraction",
                 inputHash: BetaHash.sha256(text),
-                promptVersion: "mock-extraction-v1",
-                schemaVersion: "1.0",
-                modelProvider: "local",
-                modelName: "MockLLMService",
-                rawResponse: "Generated \(drafts.count) candidate(s)",
-                parsedResponse: drafts.map(\.title).joined(separator: ", "),
-                latencyMS: latency
+                promptVersion: result.promptVersion,
+                schemaVersion: result.schemaVersion,
+                modelProvider: result.modelProvider,
+                modelName: result.modelName,
+                rawResponse: result.rawResponse,
+                parsedResponse: result.parsedResponse,
+                latencyMS: latency,
+                tokenUsage: result.tokenUsage,
+                costEstimate: result.costEstimate
             ))
 
             rawInput.status = drafts.isEmpty ? .failed : .extracted
@@ -639,10 +696,10 @@ struct BetaExtractionPipeline {
                 rawInputID: rawInput.id,
                 taskType: "extraction",
                 inputHash: BetaHash.sha256(text),
-                promptVersion: "mock-extraction-v1",
+                promptVersion: "extraction-v1",
                 schemaVersion: "1.0",
-                modelProvider: "local",
-                modelName: "MockLLMService",
+                modelProvider: "unknown",
+                modelName: "unknown",
                 rawResponse: "",
                 parsedResponse: "",
                 latencyMS: 0,

@@ -5,14 +5,14 @@
 - iOS 本地 beta。
 - 文本、剪贴板、图片 OCR。
 - 本地 Mock LLM。
+- OpenAI-compatible Provider 设置、Keychain API Key、模型获取和手动模型选择。
 - 待审核和内置日程。
 
 ## 0.2.0
 
-- OpenAI LLM Provider。
 - JSON Schema 校验和 repair prompt。
 - 更完整的评测集。
-- App icon 和正式 asset catalog。
+- Provider 质量评测和成本统计。
 
 ## 0.3.0
 

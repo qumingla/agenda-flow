@@ -9,11 +9,11 @@
 - Added SwiftData models for raw inputs, preprocessing results, candidate events, calendar events, dynamic fields, and LLM traces.
 - Added local text capture, clipboard parsing, image import, Apple Vision OCR, local rule-based MockLLM extraction, review editing, dynamic fields, planning validation, built-in calendar events, and local notification scheduling.
 - Added Liquid Glass styling through iOS 26 `glassEffect`, with material fallback for older iOS.
+- Added a temporary App icon and AgendaFlow display name.
+- Added OpenAI-compatible LLM Provider settings, Keychain API Key storage, `/models` connection testing, manual model selection, cloud extraction, trace metadata, and local fallback.
 - Added product, architecture, data model, LLM, privacy, and development documentation.
 - Added JSON Schemas and prompt templates for future real LLM provider integration.
 
 ### Known Gaps
 
-- Real cloud LLM provider is not wired yet.
 - Share Extension, EventKit sync, ASR, App Intents, and CloudKit are documented but not implemented in this beta.
-- Asset catalog is present in source but not attached to the build target to avoid local `actool` runtime issues during verification.
