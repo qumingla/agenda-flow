@@ -389,6 +389,8 @@
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于后续在 App 内录音并提取日程。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选择截图或照片并识别其中的日程信息。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于后续把导入或录制的音频转写为文本。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 0.1.0;
@@ -416,6 +418,8 @@
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于后续在 App 内录音并提取日程。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选择截图或照片并识别其中的日程信息。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于后续把导入或录制的音频转写为文本。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 0.1.0;
