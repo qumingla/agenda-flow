@@ -17,6 +17,7 @@
 		000000000000000000000208 /* ReviewViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* ReviewViews.swift */; };
 		000000000000000000000209 /* CalendarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000109 /* CalendarViews.swift */; };
 		000000000000000000000210 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* SettingsView.swift */; };
+		000000000000000000000211 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000111 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +32,7 @@
 		000000000000000000000108 /* ReviewViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewViews.swift; sourceTree = "<group>"; };
 		000000000000000000000109 /* CalendarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViews.swift; sourceTree = "<group>"; };
 		000000000000000000000110 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		000000000000000000000111 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -161,6 +163,7 @@
 		000000000000000000000420 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000111 /* Assets.xcassets */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -233,6 +236,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				000000000000000000000211 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -379,12 +383,15 @@
 		000000000000000000000503 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = SmartSchedule;
+				INFOPLIST_KEY_CFBundleDisplayName = AgendaFlow;
+				INFOPLIST_KEY_CFBundleName = AgendaFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于后续在 App 内录音并提取日程。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选择截图或照片并识别其中的日程信息。";
@@ -408,12 +415,15 @@
 		000000000000000000000504 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = SmartSchedule;
+				INFOPLIST_KEY_CFBundleDisplayName = AgendaFlow;
+				INFOPLIST_KEY_CFBundleName = AgendaFlow;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于后续在 App 内录音并提取日程。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选择截图或照片并识别其中的日程信息。";
