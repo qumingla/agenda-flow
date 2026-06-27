@@ -1,0 +1,6 @@
+{
+  "title": "合同讨论会议",
+  "time_status": "inferred",
+  "location_type": "physical",
+  "dynamic_fields": ["materials_to_bring", "topic"]
+}

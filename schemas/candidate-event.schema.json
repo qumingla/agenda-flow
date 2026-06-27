@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenda-flow.local/schemas/candidate-event.schema.json",
+  "title": "CandidateEvent",
+  "type": "object",
+  "required": ["candidate_id", "title", "time", "location", "overall_confidence"],
+  "properties": {
+    "candidate_id": { "type": "string" },
+    "title": {
+      "type": "object",
+      "required": ["value", "confidence"],
+      "properties": {
+        "value": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source_text": { "type": "string" }
+      }
+    },
+    "time": {
+      "type": "object",
+      "required": ["status", "timezone"],
+      "properties": {
+        "start": { "type": ["string", "null"], "format": "date-time" },
+        "end": { "type": ["string", "null"], "format": "date-time" },
+        "timezone": { "type": "string" },
+        "is_all_day": { "type": "boolean" },
+        "status": {
+          "type": "string",
+          "enum": ["confirmed", "inferred", "missing", "needs_confirmation"]
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source_text": { "type": "string" }
+      }
+    },
+    "location": {
+      "type": "object",
+      "required": ["type", "status"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["physical", "online", "phone", "tbd", "not_applicable"]
+        },
+        "name": { "type": ["string", "null"] },
+        "address": { "type": ["string", "null"] },
+        "room": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["confirmed", "inferred", "missing", "needs_confirmation"]
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source_text": { "type": "string" }
+      }
+    },
+    "dynamic_fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dynamic_field" }
+    },
+    "questions_for_user": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "overall_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "$defs": {
+    "dynamic_field": {
+      "type": "object",
+      "required": ["key", "label", "type", "value", "confidence"],
+      "properties": {
+        "key": { "type": "string" },
+        "label": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "datetime", "url", "person", "location", "enum", "file"]
+        },
+        "value": {},
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source_text": { "type": "string" },
+        "editable": { "type": "boolean" }
+      }
+    }
+  }
+}

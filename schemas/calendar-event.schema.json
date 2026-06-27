@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenda-flow.local/schemas/calendar-event.schema.json",
+  "title": "CalendarEvent",
+  "type": "object",
+  "required": ["id", "title", "start", "end", "timezone", "location"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "start": { "type": "string", "format": "date-time" },
+    "end": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string" },
+    "is_all_day": { "type": "boolean" },
+    "location": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["physical", "online", "phone", "tbd", "not_applicable"]
+        },
+        "name": { "type": ["string", "null"] },
+        "address": { "type": ["string", "null"] }
+      }
+    },
+    "notes": { "type": "string" },
+    "custom_fields": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "source_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "external_calendar_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["provider", "external_id"],
+        "properties": {
+          "provider": { "type": "string" },
+          "external_id": { "type": "string" }
+        }
+      }
+    }
+  }
+}

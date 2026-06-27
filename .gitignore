@@ -1,0 +1,21 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+
+# Swift Package / tooling
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Local secrets
+.env
+*.xcconfig.local
+
+# App generated data
+raw_inputs/
+processed/

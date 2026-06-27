@@ -1,0 +1,21 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode
+        run: xcodebuild -version
+      - name: Build
+        run: |
+          xcodebuild -project apps/ios/SmartSchedule.xcodeproj \
+            -target SmartSchedule \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            build

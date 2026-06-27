@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenda-flow.local/schemas/extraction-result.schema.json",
+  "title": "ExtractionResult",
+  "type": "object",
+  "required": ["schema_version", "raw_input_id", "extraction_id", "items"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "raw_input_id": { "type": "string" },
+    "extraction_id": { "type": "string" },
+    "source_summary": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "candidate-event.schema.json" }
+    }
+  }
+}
