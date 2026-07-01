@@ -6,7 +6,7 @@
 捕获页
   -> 输入或粘贴文本
   -> 创建 RawInput
-  -> MockLLMService 提取 CandidateEvent
+  -> 云端 LLM 或 MockLLMService 提取 CandidateEvent
   -> 待审核列表
   -> 审核详情编辑
   -> 规则校验
@@ -20,9 +20,9 @@
 捕获页
   -> 选择图片
   -> 保存原图和缩略图
-  -> Apple Vision OCR
+  -> Apple Vision 或云端视觉模型 OCR
   -> PreprocessResult
-  -> MockLLMService 提取 CandidateEvent
+  -> 云端 LLM 或 MockLLMService 提取 CandidateEvent
   -> 待审核
 ```
 

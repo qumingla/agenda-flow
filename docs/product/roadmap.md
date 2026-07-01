@@ -4,8 +4,9 @@
 
 - iOS 本地 beta。
 - 文本、剪贴板、图片 OCR。
-- 本地 Mock LLM。
-- OpenAI-compatible Provider 设置、Keychain API Key、模型获取和手动模型选择。
+- 默认本地 OCR，可选云端视觉模型。
+- 默认云端 LLM 规整，可回退本地 Mock LLM。
+- OpenAI-compatible Provider 设置、Keychain API Key、OCR/LLM 模型获取和手动模型选择。
 - 待审核和内置日程。
 
 ## 0.2.0

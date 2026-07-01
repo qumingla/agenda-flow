@@ -17,13 +17,15 @@
 7. 审核后生成内置日程。
 8. 本地通知提醒。
 9. 隐私设置和本地数据清空。
+10. OpenAI-compatible LLM Provider 配置。
+11. OCR 默认本地，支持手动切换云端视觉模型。
 
 后置：
 
 1. Share Extension。
 2. EventKit 同步。
 3. 音频导入和 ASR。
-4. 真实 LLM Provider。
+4. Provider 质量评测。
 5. CloudKit 同步。
 
 ## 用户故事
@@ -34,7 +36,7 @@
 
 ### 截图输入
 
-用户从相册选择聊天截图。App 使用 Apple Vision 本地 OCR，保存原图路径和 OCR 文本，然后把文本交给提取流程生成候选日程。
+用户从相册选择聊天截图。App 默认使用 Apple Vision 本地 OCR，用户也可以在设置中改用云端视觉模型；保存原图路径和 OCR 文本后，把文本交给提取流程生成候选日程。
 
 ### 审核提交
 

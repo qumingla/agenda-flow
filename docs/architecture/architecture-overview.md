@@ -22,7 +22,9 @@ Service Layer：
 
 - LocalFileStorageService。
 - AppleVisionOCRService。
+- OpenAICompatibleOCRService，可选云端视觉模型 OCR。
 - MockLLMService。
+- OpenAICompatibleLLMService，默认用于云端结构化规整并支持本地回退。
 - BetaExtractionPipeline。
 - BetaPlanningService。
 - NotificationScheduler。
@@ -30,7 +32,7 @@ Service Layer：
 Integration Layer：
 
 - Vision 已接入。
-- EventKit、Share Extension、ASR、真实 LLM Provider 后续通过协议接入。
+- EventKit、Share Extension、ASR、更多真实模型 Provider 后续通过协议接入。
 
 ## Beta 架构原则
 

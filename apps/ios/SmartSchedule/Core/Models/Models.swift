@@ -249,6 +249,8 @@ struct OCRResult: Sendable {
     var text: String
     var confidence: Double
     var blocks: [OCRBlock]
+    var engineName: String = "Apple Vision"
+    var engineVersion: String = "local"
 }
 
 struct CustomFieldDraft: Sendable {

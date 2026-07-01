@@ -7,9 +7,9 @@ struct SettingsView: View {
     @AppStorage("defaultDurationMinutes") private var defaultDurationMinutes = 60
     @AppStorage("workdayStartHour") private var workdayStartHour = 9
     @AppStorage("workdayEndHour") private var workdayEndHour = 18
-    @AppStorage(LLMPreferencesKey.cloudEnabled) private var cloudLLMEnabled = false
-    @AppStorage(LLMPreferencesKey.privacyLocalOnly) private var privacyLocalOnly = true
-    @AppStorage(LLMPreferencesKey.provider) private var providerRaw = LLMProviderPreset.local.rawValue
+    @AppStorage(LLMPreferencesKey.cloudEnabled) private var cloudLLMEnabled = true
+    @AppStorage(LLMPreferencesKey.privacyLocalOnly) private var privacyLocalOnly = false
+    @AppStorage(LLMPreferencesKey.provider) private var providerRaw = LLMProviderPreset.openAI.rawValue
     @AppStorage(LLMPreferencesKey.baseURL) private var llmBaseURL = ""
     @AppStorage(LLMPreferencesKey.modelName) private var llmModelName = ""
     @AppStorage(LLMPreferencesKey.useJSONMode) private var llmUseJSONMode = true
@@ -17,6 +17,13 @@ struct SettingsView: View {
     @AppStorage(LLMPreferencesKey.fallbackToMock) private var llmFallbackToMock = true
     @AppStorage(LLMPreferencesKey.timeoutSeconds) private var llmTimeoutSeconds = 60.0
     @AppStorage(LLMPreferencesKey.fetchedModels) private var fetchedModelsBlob = ""
+    @AppStorage(OCRPreferencesKey.mode) private var ocrModeRaw = OCRProviderMode.localAppleVision.rawValue
+    @AppStorage(OCRPreferencesKey.provider) private var ocrProviderRaw = LLMProviderPreset.openAI.rawValue
+    @AppStorage(OCRPreferencesKey.baseURL) private var ocrBaseURL = ""
+    @AppStorage(OCRPreferencesKey.modelName) private var ocrModelName = ""
+    @AppStorage(OCRPreferencesKey.timeoutSeconds) private var ocrTimeoutSeconds = 60.0
+    @AppStorage(OCRPreferencesKey.fallbackToLocal) private var ocrFallbackToLocal = true
+    @AppStorage(OCRPreferencesKey.fetchedModels) private var ocrFetchedModelsBlob = ""
 
     @State private var showDeleteConfirmation = false
     @State private var deleteMessage: String?
@@ -25,6 +32,11 @@ struct SettingsView: View {
     @State private var keyStatusMessage: String?
     @State private var isFetchingModels = false
     @State private var modelFetchMessage: String?
+    @State private var ocrAPIKeyInput = ""
+    @State private var ocrHasSavedAPIKey = false
+    @State private var ocrKeyStatusMessage: String?
+    @State private var isFetchingOCRModels = false
+    @State private var ocrModelFetchMessage: String?
 
     var body: some View {
         Form {
@@ -43,29 +55,25 @@ struct SettingsView: View {
                 }
             }
 
-            Section("隐私") {
-                Toggle("仅本地处理", isOn: $privacyLocalOnly)
+            Section("云端与隐私") {
+                Toggle("强制全本地处理", isOn: $privacyLocalOnly)
                     .onChange(of: privacyLocalOnly) { _, newValue in
                         if newValue {
                             cloudLLMEnabled = false
+                            ocrModeRaw = OCRProviderMode.localAppleVision.rawValue
                         }
                     }
-                Toggle("启用云端 LLM", isOn: $cloudLLMEnabled)
-                    .disabled(selectedProvider == .local)
-                    .onChange(of: cloudLLMEnabled) { _, newValue in
-                        if newValue {
-                            privacyLocalOnly = false
-                        }
-                    }
-                Text("开启云端 LLM 后，文本或 OCR 结果会发送到你选择的模型服务。原始截图默认仍保存在本机。")
+                Text("默认是本地 OCR、云端 LLM 规整。打开全本地处理后，图片和文本都不会发往云端模型。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
+            ocrProviderSection
+
             llmProviderSection
 
             Section("系统能力") {
-                LabeledContent("OCR", value: "Apple Vision，本地")
+                LabeledContent("OCR", value: ocrEngineLabel)
                 LabeledContent("结构化提取", value: extractionEngineLabel)
                 LabeledContent("日历同步", value: "协议预留")
                 LabeledContent("Share Extension", value: "后续阶段")
@@ -95,12 +103,26 @@ struct SettingsView: View {
         }
         .navigationTitle("设置")
         .onAppear {
+            RuntimePreferencesBootstrap.applyIfNeeded()
             applyMissingProviderDefaults()
+            applyMissingOCRProviderDefaults()
             loadAPIKeyState()
+            loadOCRAPIKeyState()
         }
         .onChange(of: providerRaw) { _, _ in
             applySelectedProviderDefaults()
             loadAPIKeyState()
+        }
+        .onChange(of: ocrProviderRaw) { _, _ in
+            applySelectedOCRProviderDefaults()
+            loadOCRAPIKeyState()
+        }
+        .onChange(of: ocrModeRaw) { _, newValue in
+            if OCRProviderMode(rawValue: newValue) == .cloudVisionModel {
+                privacyLocalOnly = false
+                applyMissingOCRProviderDefaults()
+                loadOCRAPIKeyState()
+            }
         }
         .confirmationDialog("清空所有本地数据？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("清空", role: .destructive) {
@@ -111,8 +133,121 @@ struct SettingsView: View {
         }
     }
 
+    private var ocrProviderSection: some View {
+        Section("OCR 识别") {
+            Picker("OCR 方式", selection: $ocrModeRaw) {
+                ForEach(OCRProviderMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode.rawValue)
+                }
+            }
+            .disabled(privacyLocalOnly)
+
+            Text(selectedOCRMode.helpText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if selectedOCRMode == .cloudVisionModel {
+                Picker("服务商", selection: $ocrProviderRaw) {
+                    ForEach(LLMProviderPreset.allCases.filter { $0 != .local }) { provider in
+                        Text(provider.displayName).tag(provider.rawValue)
+                    }
+                }
+
+                Text(selectedOCRProvider.helpText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                TextField("Base URL", text: $ocrBaseURL)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+
+                TextField("手动填写 OCR 模型名", text: $ocrModelName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                if !ocrFetchedModelIDs.isEmpty {
+                    Picker("使用 OCR 模型", selection: $ocrModelName) {
+                        if ocrModelName.isEmpty {
+                            Text("请选择模型").tag("")
+                        }
+                        if !ocrModelName.isEmpty, !ocrFetchedModelIDs.contains(ocrModelName) {
+                            Text("当前：\(ocrModelName)").tag(ocrModelName)
+                        }
+                        ForEach(ocrFetchedModelIDs, id: \.self) { modelID in
+                            Text(modelID).tag(modelID)
+                        }
+                    }
+                }
+
+                SecureField(ocrHasSavedAPIKey ? "已保存 Key，输入新 Key 可替换" : "API Key", text: $ocrAPIKeyInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                HStack {
+                    Button {
+                        saveOCRAPIKey()
+                    } label: {
+                        Label("保存 Key", systemImage: "key")
+                    }
+                    .disabled(ocrAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Spacer()
+
+                    Button(role: .destructive) {
+                        clearOCRAPIKey()
+                    } label: {
+                        Label("清除", systemImage: "xmark.circle")
+                    }
+                    .disabled(!ocrHasSavedAPIKey)
+                }
+
+                if let ocrKeyStatusMessage {
+                    Text(ocrKeyStatusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Toggle("云端 OCR 失败时回退 Apple Vision", isOn: $ocrFallbackToLocal)
+
+                Stepper(value: $ocrTimeoutSeconds, in: 15...180, step: 15) {
+                    LabeledContent("请求超时", value: "\(Int(ocrTimeoutSeconds)) 秒")
+                }
+
+                Button {
+                    fetchOCRModels()
+                } label: {
+                    if isFetchingOCRModels {
+                        Label("正在获取 OCR 模型", systemImage: "arrow.triangle.2.circlepath")
+                    } else {
+                        Label("测试并获取 OCR 模型", systemImage: "network")
+                    }
+                }
+                .disabled(isFetchingOCRModels)
+
+                if let ocrModelFetchMessage {
+                    Text(ocrModelFetchMessage)
+                        .font(.footnote)
+                        .foregroundStyle(ocrModelFetchMessage.contains("失败") || ocrModelFetchMessage.contains("不可用") ? .red : .secondary)
+                }
+
+                Text("获取模型只调用当前 OCR Base URL 的 `/models` 接口。获取成功后，请手动选择用于图片文字识别的视觉模型。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var llmProviderSection: some View {
-        Section("LLM Provider") {
+        Section("LLM 规整") {
+            Toggle("启用云端 LLM", isOn: $cloudLLMEnabled)
+                .disabled(selectedProvider == .local || privacyLocalOnly)
+                .onChange(of: cloudLLMEnabled) { _, newValue in
+                    if newValue {
+                        privacyLocalOnly = false
+                    }
+                }
+
             Picker("服务商", selection: $providerRaw) {
                 ForEach(LLMProviderPreset.allCases) { provider in
                     Text(provider.displayName).tag(provider.rawValue)
@@ -192,7 +327,7 @@ struct SettingsView: View {
                         Label("测试并获取模型", systemImage: "network")
                     }
                 }
-                .disabled(!canFetchModels)
+                .disabled(isFetchingModels)
 
                 if let modelFetchMessage {
                     Text(modelFetchMessage)
@@ -211,6 +346,15 @@ struct SettingsView: View {
         LLMProviderPreset(rawValue: providerRaw) ?? .local
     }
 
+    private var selectedOCRMode: OCRProviderMode {
+        OCRProviderMode(rawValue: ocrModeRaw) ?? .localAppleVision
+    }
+
+    private var selectedOCRProvider: LLMProviderPreset {
+        let provider = LLMProviderPreset(rawValue: ocrProviderRaw) ?? .openAI
+        return provider == .local ? .openAI : provider
+    }
+
     private var fetchedModelIDs: [String] {
         fetchedModelsBlob
             .split(separator: "\n")
@@ -218,12 +362,19 @@ struct SettingsView: View {
             .filter { !$0.isEmpty }
     }
 
-    private var canFetchModels: Bool {
-        selectedProvider != .local
-            && cloudLLMEnabled
-            && !privacyLocalOnly
-            && !isFetchingModels
-            && !llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var ocrFetchedModelIDs: [String] {
+        ocrFetchedModelsBlob
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var ocrEngineLabel: String {
+        guard !privacyLocalOnly, selectedOCRMode == .cloudVisionModel else {
+            return "Apple Vision，本地"
+        }
+        let model = ocrModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.isEmpty ? "\(selectedOCRProvider.displayName)，未选择 OCR 模型" : "\(selectedOCRProvider.displayName)，\(model)"
     }
 
     private var extractionEngineLabel: String {
@@ -260,8 +411,35 @@ struct SettingsView: View {
             return
         }
 
+        if !privacyLocalOnly {
+            cloudLLMEnabled = true
+        }
         llmBaseURL = provider.defaultBaseURL
         llmModelName = provider.defaultModel
+    }
+
+    private func applyMissingOCRProviderDefaults() {
+        if ocrProviderRaw == LLMProviderPreset.local.rawValue {
+            ocrProviderRaw = LLMProviderPreset.openAI.rawValue
+        }
+        if ocrBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ocrBaseURL = selectedOCRProvider.defaultBaseURL
+        }
+        if ocrModelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ocrModelName = selectedOCRProvider.defaultModel
+        }
+    }
+
+    private func applySelectedOCRProviderDefaults() {
+        let provider = selectedOCRProvider
+        ocrAPIKeyInput = ""
+        ocrKeyStatusMessage = nil
+        ocrModelFetchMessage = nil
+        ocrFetchedModelsBlob = ""
+
+        ocrProviderRaw = provider.rawValue
+        ocrBaseURL = provider.defaultBaseURL
+        ocrModelName = provider.defaultModel
     }
 
     private func loadAPIKeyState() {
@@ -281,14 +459,44 @@ struct SettingsView: View {
         }
     }
 
+    private func loadOCRAPIKeyState() {
+        guard selectedOCRMode == .cloudVisionModel else {
+            ocrHasSavedAPIKey = false
+            ocrKeyStatusMessage = nil
+            return
+        }
+
+        do {
+            let apiKey = try LLMKeychainStore.readAPIKey(for: selectedOCRProvider)
+            ocrHasSavedAPIKey = !apiKey.isEmpty
+            ocrKeyStatusMessage = ocrHasSavedAPIKey ? "API Key 已保存在 Keychain。" : "尚未保存 API Key。"
+        } catch {
+            ocrHasSavedAPIKey = false
+            ocrKeyStatusMessage = error.localizedDescription
+        }
+    }
+
     private func saveAPIKey() {
         do {
             try LLMKeychainStore.saveAPIKey(apiKeyInput, for: selectedProvider)
             apiKeyInput = ""
             loadAPIKeyState()
+            loadOCRAPIKeyState()
             keyStatusMessage = "API Key 已保存到 Keychain。"
         } catch {
             keyStatusMessage = error.localizedDescription
+        }
+    }
+
+    private func saveOCRAPIKey() {
+        do {
+            try LLMKeychainStore.saveAPIKey(ocrAPIKeyInput, for: selectedOCRProvider)
+            ocrAPIKeyInput = ""
+            loadOCRAPIKeyState()
+            loadAPIKeyState()
+            ocrKeyStatusMessage = "API Key 已保存到 Keychain。"
+        } catch {
+            ocrKeyStatusMessage = error.localizedDescription
         }
     }
 
@@ -297,15 +505,44 @@ struct SettingsView: View {
             try LLMKeychainStore.deleteAPIKey(for: selectedProvider)
             apiKeyInput = ""
             loadAPIKeyState()
+            loadOCRAPIKeyState()
             keyStatusMessage = "API Key 已清除。"
         } catch {
             keyStatusMessage = error.localizedDescription
         }
     }
 
+    private func clearOCRAPIKey() {
+        do {
+            try LLMKeychainStore.deleteAPIKey(for: selectedOCRProvider)
+            ocrAPIKeyInput = ""
+            loadOCRAPIKeyState()
+            loadAPIKeyState()
+            ocrKeyStatusMessage = "API Key 已清除。"
+        } catch {
+            ocrKeyStatusMessage = error.localizedDescription
+        }
+    }
+
     private func fetchModels() {
-        guard canFetchModels else {
-            modelFetchMessage = "请先关闭仅本地处理、启用云端 LLM，并填写 Base URL。"
+        guard selectedProvider != .local else {
+            modelFetchMessage = "请先选择一个云端 Provider。"
+            return
+        }
+        guard !privacyLocalOnly else {
+            modelFetchMessage = "请先关闭“强制全本地处理”，否则不会发起云端测试。"
+            return
+        }
+        guard cloudLLMEnabled else {
+            modelFetchMessage = "请先启用云端 LLM。"
+            return
+        }
+        guard !llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            modelFetchMessage = "请先填写 Base URL。"
+            return
+        }
+        guard hasSavedAPIKey || !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            modelFetchMessage = "请先输入 API Key，或保存已输入的 Key。"
             return
         }
 
@@ -318,6 +555,7 @@ struct SettingsView: View {
                     try LLMKeychainStore.saveAPIKey(apiKeyInput, for: selectedProvider)
                     apiKeyInput = ""
                     loadAPIKeyState()
+                    loadOCRAPIKeyState()
                 }
 
                 let models = try await LLMServiceFactory.fetchAvailableModels()
@@ -328,6 +566,47 @@ struct SettingsView: View {
                 modelFetchMessage = "测试失败：\(error.localizedDescription)"
             }
             isFetchingModels = false
+        }
+    }
+
+    private func fetchOCRModels() {
+        guard selectedOCRMode == .cloudVisionModel else {
+            ocrModelFetchMessage = "请先把 OCR 方式切换为云端视觉模型。"
+            return
+        }
+        guard !privacyLocalOnly else {
+            ocrModelFetchMessage = "请先关闭“强制全本地处理”，否则不会发起云端测试。"
+            return
+        }
+        guard !ocrBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            ocrModelFetchMessage = "请先填写 OCR Base URL。"
+            return
+        }
+        guard ocrHasSavedAPIKey || !ocrAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            ocrModelFetchMessage = "请先输入 API Key，或保存已输入的 Key。"
+            return
+        }
+
+        isFetchingOCRModels = true
+        ocrModelFetchMessage = nil
+
+        Task {
+            do {
+                if !ocrAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    try LLMKeychainStore.saveAPIKey(ocrAPIKeyInput, for: selectedOCRProvider)
+                    ocrAPIKeyInput = ""
+                    loadOCRAPIKeyState()
+                    loadAPIKeyState()
+                }
+
+                let models = try await OCRServiceFactory.fetchAvailableModels()
+                let modelIDs = models.map(\.id)
+                ocrFetchedModelsBlob = modelIDs.joined(separator: "\n")
+                ocrModelFetchMessage = "测试通过，获取到 \(modelIDs.count) 个模型。请手动选择 OCR 模型。"
+            } catch {
+                ocrModelFetchMessage = "测试失败：\(error.localizedDescription)"
+            }
+            isFetchingOCRModels = false
         }
     }
 

@@ -3,6 +3,10 @@ import SwiftUI
 
 @main
 struct SmartScheduleApp: App {
+    init() {
+        RuntimePreferencesBootstrap.applyIfNeeded()
+    }
+
     private let modelContainer: ModelContainer = {
         let schema = Schema([
             RawInputModel.self,

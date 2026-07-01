@@ -64,6 +64,29 @@ enum LLMProviderPreset: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum OCRProviderMode: String, CaseIterable, Identifiable, Sendable {
+    case localAppleVision
+    case cloudVisionModel
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .localAppleVision: "本地 Apple Vision"
+        case .cloudVisionModel: "云端视觉模型"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .localAppleVision:
+            "默认方式。截图只在设备上用 Apple Vision 识别，不上传原图。"
+        case .cloudVisionModel:
+            "把图片发送给你选择的 OpenAI-compatible 视觉模型做 OCR，适合复杂截图、海报或表格。"
+        }
+    }
+}
+
 struct LLMRuntimeConfiguration: Sendable {
     var provider: LLMProviderPreset
     var baseURL: URL
@@ -74,9 +97,27 @@ struct LLMRuntimeConfiguration: Sendable {
     var timeoutSeconds: Double
 }
 
+struct OCRRuntimeConfiguration: Sendable {
+    var provider: LLMProviderPreset
+    var baseURL: URL
+    var modelName: String
+    var apiKey: String
+    var timeoutSeconds: Double
+}
+
 struct LLMRemoteModel: Identifiable, Hashable, Sendable {
     var id: String
     var ownedBy: String?
+}
+
+enum OCRPreferencesKey {
+    static let mode = "ocrProviderMode"
+    static let provider = "ocrProviderPreset"
+    static let baseURL = "ocrBaseURL"
+    static let modelName = "ocrModelName"
+    static let timeoutSeconds = "ocrTimeoutSeconds"
+    static let fallbackToLocal = "ocrFallbackToLocal"
+    static let fetchedModels = "ocrFetchedModels"
 }
 
 enum LLMPreferencesKey {
@@ -90,6 +131,7 @@ enum LLMPreferencesKey {
     static let fetchedModels = "llmFetchedModels"
     static let cloudEnabled = "cloudLLMEnabled"
     static let privacyLocalOnly = "privacyLocalOnly"
+    static let defaultProfileVersion = "llmDefaultProfileVersion"
 }
 
 enum LLMKeychainStore {
@@ -177,20 +219,187 @@ enum LLMKeychainStore {
     }
 }
 
+enum RuntimePreferencesBootstrap {
+    private static let profileVersion = "2026-07-01-local-ocr-cloud-llm"
+
+    static func applyIfNeeded(defaults: UserDefaults = .standard) {
+        guard defaults.string(forKey: LLMPreferencesKey.defaultProfileVersion) != profileVersion else {
+            return
+        }
+
+        let existingProvider = defaults.string(forKey: LLMPreferencesKey.provider)
+        if existingProvider == nil || existingProvider == LLMProviderPreset.local.rawValue {
+            defaults.set(LLMProviderPreset.openAI.rawValue, forKey: LLMPreferencesKey.provider)
+            defaults.set(LLMProviderPreset.openAI.defaultBaseURL, forKey: LLMPreferencesKey.baseURL)
+            defaults.set(LLMProviderPreset.openAI.defaultModel, forKey: LLMPreferencesKey.modelName)
+        }
+        defaults.set(true, forKey: LLMPreferencesKey.cloudEnabled)
+        defaults.set(false, forKey: LLMPreferencesKey.privacyLocalOnly)
+
+        if defaults.string(forKey: OCRPreferencesKey.mode) == nil {
+            defaults.set(OCRProviderMode.localAppleVision.rawValue, forKey: OCRPreferencesKey.mode)
+        }
+        if defaults.string(forKey: OCRPreferencesKey.provider) == nil {
+            defaults.set(LLMProviderPreset.openAI.rawValue, forKey: OCRPreferencesKey.provider)
+        }
+        if defaults.string(forKey: OCRPreferencesKey.baseURL) == nil {
+            defaults.set(LLMProviderPreset.openAI.defaultBaseURL, forKey: OCRPreferencesKey.baseURL)
+        }
+        if defaults.string(forKey: OCRPreferencesKey.modelName) == nil {
+            defaults.set(LLMProviderPreset.openAI.defaultModel, forKey: OCRPreferencesKey.modelName)
+        }
+        if defaults.object(forKey: OCRPreferencesKey.fallbackToLocal) == nil {
+            defaults.set(true, forKey: OCRPreferencesKey.fallbackToLocal)
+        }
+        if defaults.object(forKey: OCRPreferencesKey.timeoutSeconds) == nil {
+            defaults.set(60.0, forKey: OCRPreferencesKey.timeoutSeconds)
+        }
+
+        defaults.set(profileVersion, forKey: LLMPreferencesKey.defaultProfileVersion)
+    }
+}
+
+@MainActor
+enum OCRServiceFactory {
+    static func makeService() throws -> any OCRService {
+        RuntimePreferencesBootstrap.applyIfNeeded()
+
+        let defaults = UserDefaults.standard
+        let localOnly = LLMServiceFactory.bool(for: LLMPreferencesKey.privacyLocalOnly, default: false, defaults: defaults)
+        let mode = mode(from: defaults)
+        guard !localOnly, mode == .cloudVisionModel else {
+            return AppleVisionOCRService()
+        }
+
+        let shouldFallback = LLMServiceFactory.bool(for: OCRPreferencesKey.fallbackToLocal, default: true, defaults: defaults)
+        let cloudService: any OCRService
+        do {
+            cloudService = OpenAICompatibleOCRService(configuration: try makeRuntimeConfiguration())
+        } catch {
+            if shouldFallback {
+                return AppleVisionOCRService()
+            }
+            throw error
+        }
+
+        if shouldFallback {
+            return FallbackOCRService(primary: cloudService, fallback: AppleVisionOCRService())
+        }
+        return cloudService
+    }
+
+    static func makeRuntimeConfiguration() throws -> OCRRuntimeConfiguration {
+        let defaults = UserDefaults.standard
+        let provider = provider(from: defaults)
+        guard provider != .local else {
+            throw BetaAppError.invalidOCRConfiguration("请选择一个云端 Provider。")
+        }
+
+        let baseURLString = LLMServiceFactory.string(
+            for: OCRPreferencesKey.baseURL,
+            default: provider.defaultBaseURL,
+            defaults: defaults
+        )
+        let modelName = LLMServiceFactory.string(
+            for: OCRPreferencesKey.modelName,
+            default: provider.defaultModel,
+            defaults: defaults
+        )
+        let apiKey = try LLMKeychainStore.readAPIKey(for: provider)
+
+        guard !baseURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BetaAppError.invalidOCRConfiguration("Base URL 不能为空。")
+        }
+        guard let baseURL = URL(string: baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              baseURL.scheme != nil,
+              baseURL.host != nil else {
+            throw BetaAppError.invalidOCRConfiguration("Base URL 不是有效 URL。")
+        }
+        guard !modelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BetaAppError.invalidOCRConfiguration("模型名不能为空。")
+        }
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BetaAppError.invalidOCRConfiguration("请先保存 \(provider.displayName) 的 API Key。")
+        }
+
+        let timeout = defaults.double(forKey: OCRPreferencesKey.timeoutSeconds)
+        return OCRRuntimeConfiguration(
+            provider: provider,
+            baseURL: baseURL,
+            modelName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+            apiKey: apiKey,
+            timeoutSeconds: timeout > 0 ? min(max(timeout, 15), 180) : 60
+        )
+    }
+
+    static func fetchAvailableModels() async throws -> [LLMRemoteModel] {
+        let configuration = try makeRuntimeConfiguration()
+        let llmConfiguration = LLMRuntimeConfiguration(
+            provider: configuration.provider,
+            baseURL: configuration.baseURL,
+            modelName: configuration.modelName,
+            apiKey: configuration.apiKey,
+            useJSONMode: false,
+            saveRawResponse: false,
+            timeoutSeconds: configuration.timeoutSeconds
+        )
+        return try await OpenAICompatibleLLMService(configuration: llmConfiguration).fetchModels()
+    }
+
+    static func mode(from defaults: UserDefaults = .standard) -> OCRProviderMode {
+        let rawValue = defaults.string(forKey: OCRPreferencesKey.mode) ?? OCRProviderMode.localAppleVision.rawValue
+        return OCRProviderMode(rawValue: rawValue) ?? .localAppleVision
+    }
+
+    static func provider(from defaults: UserDefaults = .standard) -> LLMProviderPreset {
+        let rawValue = defaults.string(forKey: OCRPreferencesKey.provider) ?? LLMProviderPreset.openAI.rawValue
+        let provider = LLMProviderPreset(rawValue: rawValue) ?? .openAI
+        return provider == .local ? .openAI : provider
+    }
+}
+
+@MainActor
+private struct FallbackOCRService: OCRService {
+    var primary: any OCRService
+    var fallback: AppleVisionOCRService
+
+    func recognizeText(from imageURL: URL) async throws -> OCRResult {
+        do {
+            return try await primary.recognizeText(from: imageURL)
+        } catch {
+            var result = try await fallback.recognizeText(from: imageURL)
+            result.engineName = "Apple Vision，云端 OCR 回退"
+            result.engineVersion = "local fallback: \(error.localizedDescription)"
+            return result
+        }
+    }
+}
+
 @MainActor
 enum LLMServiceFactory {
     static func makeService() throws -> any LLMService {
+        RuntimePreferencesBootstrap.applyIfNeeded()
+
         let defaults = UserDefaults.standard
         let provider = provider(from: defaults)
-        let localOnly = bool(for: LLMPreferencesKey.privacyLocalOnly, default: true, defaults: defaults)
-        let cloudEnabled = bool(for: LLMPreferencesKey.cloudEnabled, default: false, defaults: defaults)
+        let localOnly = bool(for: LLMPreferencesKey.privacyLocalOnly, default: false, defaults: defaults)
+        let cloudEnabled = bool(for: LLMPreferencesKey.cloudEnabled, default: true, defaults: defaults)
 
         guard cloudEnabled, !localOnly, provider != .local else {
             return MockLLMService()
         }
 
-        let cloudService = try makeConfiguredCloudService()
         let shouldFallback = bool(for: LLMPreferencesKey.fallbackToMock, default: true, defaults: defaults)
+        let cloudService: any LLMService
+        do {
+            cloudService = try makeConfiguredCloudService()
+        } catch {
+            if shouldFallback {
+                return MockLLMService()
+            }
+            throw error
+        }
+
         if shouldFallback {
             return FallbackLLMService(primary: cloudService, fallback: MockLLMService())
         }
@@ -254,7 +463,7 @@ enum LLMServiceFactory {
     }
 
     static func provider(from defaults: UserDefaults = .standard) -> LLMProviderPreset {
-        let rawValue = defaults.string(forKey: LLMPreferencesKey.provider) ?? LLMProviderPreset.local.rawValue
+        let rawValue = defaults.string(forKey: LLMPreferencesKey.provider) ?? LLMProviderPreset.openAI.rawValue
         return LLMProviderPreset(rawValue: rawValue) ?? .local
     }
 

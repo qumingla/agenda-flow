@@ -68,7 +68,7 @@ struct CaptureView: View {
                 .font(.largeTitle.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
-            Text("Beta 版支持文本、剪贴板和相册截图。本地 OCR 后会生成待审核草稿，确认前不会进入正式日程。")
+            Text("Beta 版支持文本、剪贴板和相册截图。OCR 默认在本地完成，也可在设置中切换云端视觉模型。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -133,7 +133,7 @@ struct CaptureView: View {
             Label("截图 OCR", systemImage: "photo.on.rectangle.angled")
                 .font(.headline)
 
-            Text("选择聊天截图、活动海报或票据信息，系统会先用 Apple Vision 在本地识别文字。")
+            Text("选择聊天截图、活动海报或票据信息。默认用 Apple Vision 本地识别，复杂图片可在设置中改用云端 OCR。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 

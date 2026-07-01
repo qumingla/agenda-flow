@@ -14,6 +14,9 @@ enum BetaAppError: LocalizedError {
     case missingStartDate
     case invalidLocation
     case fileWriteFailed
+    case invalidOCRConfiguration(String)
+    case ocrRequestFailed(String)
+    case invalidOCRResponse(String)
     case invalidLLMConfiguration(String)
     case keychainFailed(String)
     case llmRequestFailed(String)
@@ -27,6 +30,9 @@ enum BetaAppError: LocalizedError {
         case .missingStartDate: "提交前必须确认明确时间。"
         case .invalidLocation: "线下地点需要填写地点名称，或将地点类型改为待定/不适用。"
         case .fileWriteFailed: "文件保存失败。"
+        case .invalidOCRConfiguration(let message): "OCR 配置不可用：\(message)"
+        case .ocrRequestFailed(let message): "OCR 请求失败：\(message)"
+        case .invalidOCRResponse(let message): "OCR 返回格式不可用：\(message)"
         case .invalidLLMConfiguration(let message): "LLM 配置不可用：\(message)"
         case .keychainFailed(let message): "密钥保存失败：\(message)"
         case .llmRequestFailed(let message): "LLM 请求失败：\(message)"
@@ -180,7 +186,151 @@ struct AppleVisionOCRService: OCRService {
         }
 
         let confidence = blocks.isEmpty ? 0 : blocks.map(\.confidence).reduce(0, +) / Double(blocks.count)
-        return OCRResult(text: text, confidence: confidence, blocks: blocks)
+        return OCRResult(
+            text: text,
+            confidence: confidence,
+            blocks: blocks,
+            engineName: "Apple Vision",
+            engineVersion: "local"
+        )
+    }
+}
+
+@MainActor
+struct OpenAICompatibleOCRService: OCRService {
+    var configuration: OCRRuntimeConfiguration
+
+    func recognizeText(from imageURL: URL) async throws -> OCRResult {
+        let imageData = try normalizedJPEGData(from: imageURL)
+        let requestData = try requestBody(imageData: imageData)
+        var request = URLRequest(url: try chatCompletionsURL())
+        request.httpMethod = "POST"
+        request.timeoutInterval = configuration.timeoutSeconds
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = requestData
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw BetaAppError.ocrRequestFailed(error.localizedDescription)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BetaAppError.ocrRequestFailed("没有收到 HTTP 响应。")
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BetaAppError.ocrRequestFailed(errorBody(from: data, statusCode: httpResponse.statusCode))
+        }
+
+        let chatResponse: CloudOCRChatResponse
+        do {
+            chatResponse = try JSONDecoder().decode(CloudOCRChatResponse.self, from: data)
+        } catch {
+            throw BetaAppError.invalidOCRResponse("Chat Completions 响应不是预期 JSON：\(error.localizedDescription)")
+        }
+
+        guard let content = chatResponse.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines),
+              !content.isEmpty else {
+            throw BetaAppError.invalidOCRResponse("choices[0].message.content 为空。")
+        }
+
+        let text = cleanOCRText(content)
+        guard !text.isEmpty else {
+            throw BetaAppError.ocrFailed
+        }
+
+        return OCRResult(
+            text: text,
+            confidence: 0.78,
+            blocks: [],
+            engineName: "\(configuration.provider.displayName) OCR",
+            engineVersion: configuration.modelName
+        )
+    }
+
+    private func normalizedJPEGData(from imageURL: URL) throws -> Data {
+        guard let image = UIImage(contentsOfFile: imageURL.path) else {
+            throw BetaAppError.imageDecodingFailed
+        }
+        guard let data = image.jpegData(compressionQuality: 0.86) else {
+            throw BetaAppError.imageDecodingFailed
+        }
+        return data
+    }
+
+    private func requestBody(imageData: Data) throws -> Data {
+        let base64Image = imageData.base64EncodedString()
+        let body: [String: Any] = [
+            "model": configuration.modelName,
+            "temperature": 0,
+            "messages": [
+                [
+                    "role": "system",
+                    "content": "You are AgendaFlow's OCR engine. Return only the text visible in the image. Preserve line breaks when helpful. Do not explain, summarize, translate, or infer calendar fields."
+                ],
+                [
+                    "role": "user",
+                    "content": [
+                        [
+                            "type": "text",
+                            "text": "识别图片中的所有可见文字。只返回 OCR 文本；如果没有可读文字，返回空字符串。"
+                        ],
+                        [
+                            "type": "image_url",
+                            "image_url": [
+                                "url": "data:image/jpeg;base64,\(base64Image)",
+                                "detail": "high"
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        return try JSONSerialization.data(withJSONObject: body, options: [])
+    }
+
+    private func chatCompletionsURL() throws -> URL {
+        let base = configuration.baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let urlString = base.hasSuffix("/chat/completions") ? base : "\(base)/chat/completions"
+        guard let url = URL(string: urlString) else {
+            throw BetaAppError.invalidOCRConfiguration("无法拼接 Chat Completions URL。")
+        }
+        return url
+    }
+
+    private func cleanOCRText(_ content: String) -> String {
+        var text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("```") {
+            text = text
+                .replacingOccurrences(of: "```text", with: "")
+                .replacingOccurrences(of: "```", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if text == "\"\"" || text.localizedCaseInsensitiveContains("no readable text") {
+            return ""
+        }
+        return text
+    }
+
+    private func errorBody(from data: Data, statusCode: Int) -> String {
+        let body = String(data: data, encoding: .utf8) ?? ""
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "HTTP \(statusCode)" : "HTTP \(statusCode): \(trimmed)"
+    }
+}
+
+private struct CloudOCRChatResponse: Decodable {
+    var choices: [Choice]
+
+    struct Choice: Decodable {
+        var message: Message
+    }
+
+    struct Message: Decodable {
+        var content: String
     }
 }
 
@@ -572,7 +722,7 @@ struct MockLLMService: LLMService {
 
 @MainActor
 struct BetaExtractionPipeline {
-    var ocrService: OCRService = AppleVisionOCRService()
+    var ocrService: (any OCRService)?
     var llmService: (any LLMService)?
 
     func processText(rawInput: RawInputModel, context: ModelContext) async {
@@ -591,7 +741,14 @@ struct BetaExtractionPipeline {
             rawInput.status = .preprocessing
             try context.save()
 
-            let result = try await ocrService.recognizeText(from: URL(fileURLWithPath: path))
+            let service: any OCRService
+            if let ocrService {
+                service = ocrService
+            } else {
+                service = try OCRServiceFactory.makeService()
+            }
+
+            let result = try await service.recognizeText(from: URL(fileURLWithPath: path))
             let blocksData = try JSONEncoder().encode(result.blocks)
             let blocksJSON = String(decoding: blocksData, as: UTF8.self)
             let preprocess = PreprocessResultModel(
@@ -600,8 +757,8 @@ struct BetaExtractionPipeline {
                 text: result.text,
                 confidence: result.confidence,
                 blocksJSON: blocksJSON,
-                engineName: "Apple Vision",
-                engineVersion: "iOS 26"
+                engineName: result.engineName,
+                engineVersion: result.engineVersion
             )
             rawInput.preprocessResults.append(preprocess)
             rawInput.rawText = result.text

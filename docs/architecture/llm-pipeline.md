@@ -2,7 +2,9 @@
 
 ## Beta 实现
 
-Beta 版默认使用 `MockLLMService` 本地规则提取：
+OCR 阶段默认使用 `AppleVisionOCRService` 本地识别。用户也可以在设置中切换为 OpenAI-compatible 云端视觉模型，云端 OCR 只负责返回图片中的文字，不做日程理解。
+
+LLM 阶段默认使用用户配置的云端 Provider 进行结构化规整；当 Key 未配置、云端失败或用户开启“强制全本地处理”时，回退到 `MockLLMService` 本地规则提取：
 
 - 相对日期：今天、明天、后天、周几。
 - 时间：上午、下午、晚上、点、冒号时间。
@@ -22,13 +24,13 @@ Beta 版默认使用 `MockLLMService` 本地规则提取：
 
 设置页支持：
 
-1. 关闭或开启云端 LLM。
-2. 选择 Provider。
+1. OCR 选择本地 Apple Vision 或云端视觉模型。
+2. OCR 和 LLM 分别选择 Provider。
 3. 手动填写 Base URL 和模型名。
 4. 保存 API Key 到 Keychain。
 5. 调用 `GET /models` 测试连接并获取模型列表。
-6. 从模型列表中手动选择后续使用的模型。
-7. 云端失败时可回退本地规则。
+6. 从模型列表中手动选择 OCR 模型和 LLM 模型。
+7. 云端 OCR 失败时可回退 Apple Vision，云端 LLM 失败时可回退本地规则。
 
 ## 目标架构
 
@@ -37,6 +39,14 @@ Beta 版默认使用 `MockLLMService` 本地规则提取：
 ```swift
 protocol LLMService {
     func extractCandidates(from text: String, referenceDate: Date) async throws -> LLMExtractionResult
+}
+```
+
+OCR Provider 应实现：
+
+```swift
+protocol OCRService {
+    func recognizeText(from imageURL: URL) async throws -> OCRResult
 }
 ```
 
