@@ -4,6 +4,12 @@ struct GlassPanel: ViewModifier {
     var tint: Color? = nil
 
     func body(content: Content) -> some View {
+        panel(for: content)
+    }
+
+    @ViewBuilder
+    private func panel(for content: Content) -> some View {
+        #if compiler(>=6.3)
         if #available(iOS 26.0, *) {
             content
                 .glassEffect(
@@ -11,13 +17,20 @@ struct GlassPanel: ViewModifier {
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
         } else {
-            content
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(.separator.opacity(0.18))
-                }
+            materialFallback(for: content)
         }
+        #else
+        materialFallback(for: content)
+        #endif
+    }
+
+    private func materialFallback(for content: Content) -> some View {
+        content
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(.separator.opacity(0.18))
+            }
     }
 }
 
